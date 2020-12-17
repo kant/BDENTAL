@@ -144,11 +144,24 @@ class BDENTAL_Props(bpy.types.PropertyGroup):
         soft_max=3000,
         step=1,
     )
+    Progress_Bar: FloatProperty(
+        name="Progress_Bar",
+        description="Progress_Bar",
+        subtype="PERCENTAGE",
+        default=0.0,
+        min=0.0,
+        max=100.0,
+        soft_min=0.0,
+        soft_max=100.0,
+        step=1,
+        precision=1,
+    )
 
     #######################
 
     CT_Loaded: BoolProperty(description="CT loaded ", default=False)
     CT_Rendered: BoolProperty(description="CT Rendered ", default=False)
+    sceneUpdate: BoolProperty(description="scene update ", default=True)
 
     #######################
 

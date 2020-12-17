@@ -1,17 +1,9 @@
 # # Python imports :
 
-import time
-import os
-import sys
-import shutil
-import math
+import time, os, sys, shutil, math, threading
 from math import degrees, radians, pi
-import threading
-
-requirements = R"C:\MyPythonResources\Requirements"
-if not requirements in sys.path:
-    sys.path.append(requirements)
 import numpy as np
+
 import SimpleITK as sitk
 import cv2
 import vtk
@@ -133,7 +125,14 @@ def VolumeRender(DcmInfo, PngDir, GpShader, ShadersBlendFile):
     ######################## Set Render settings : #############################
     Scene_Settings()
     ###################### Change to ORTHO persp with nice view angle :##########
-    
+    # ViewMatrix = Matrix(
+    #     (
+    #         (0.8435, -0.5371, -0.0000, 1.2269),
+    #         (0.2497, 0.3923, 0.8853, -15.1467),
+    #         (-0.4755, -0.7468, 0.4650, -55.2801),
+    #         (0.0000, 0.0000, 0.0000, 1.0000),
+    #     )
+    # )
     ViewMatrix = Matrix(
         (
             (0.8677, -0.4971, 0.0000, 4.0023),
@@ -148,7 +147,7 @@ def VolumeRender(DcmInfo, PngDir, GpShader, ShadersBlendFile):
             for space in [sp for sp in area.spaces if sp.type == "VIEW_3D"]:
                 r3d = space.region_3d
                 r3d.view_perspective = "ORTHO"
-                r3d.view_distance = 320
+                r3d.view_distance = 400
                 r3d.view_matrix = ViewMatrix
                 r3d.update()
 
@@ -221,7 +220,7 @@ def VolumeRender(DcmInfo, PngDir, GpShader, ShadersBlendFile):
         mat.shadow_method = "HASHED"
 
         print(f"{ImagePNG} Processed ...")
-#         bpy.ops.wm.redraw_timer(type="DRAW_SWAP", iterations=3)  # --Work quite good but Slow down volume Render
+        # bpy.ops.wm.redraw_timer(type="DRAW_SWAP", iterations=3)  # --Work good but Slow down volume Render
 
         ############################# END LOOP ##################################
 
@@ -297,8 +296,8 @@ def Scene_Settings():
                 space.shading.use_scene_world = False
 
                 # 'RENDERED' Shading Light method :
-                # space.shading.use_scene_lights_render = False
-                # space.shading.use_scene_world_render = True
+                space.shading.use_scene_lights_render = False
+                space.shading.use_scene_world_render = True
 
                 space.shading.studio_light = "forest.exr"
                 space.shading.studiolight_rotate_z = 0
@@ -358,7 +357,7 @@ def AxialSliceUpdate(scene):
     TransformMatrix = DcmInfo["TransformMatrix"]
 
     ImagePath = os.path.join(SlicesDir, "AXIAL_SLICE.png")
-    Plane = bpy.context.scene.objects["AXIAL_SLICE"]
+    Plane = bpy.context.scene.objects.get("AXIAL_SLICE")
 
     if Plane and os.path.exists(ImageData):
 
@@ -397,7 +396,7 @@ def AxialSliceUpdate(scene):
         ##########################################
         # Euler3DTransform :
         Euler3D = sitk.Euler3DTransform()
-        Euler3D.SetCenter(NewVCenter)
+        Euler3D.SetCenter((0, 0, 0))
         Euler3D.SetRotation(Rvec[0], Rvec[1], Rvec[2])
         Euler3D.SetTranslation(Tvec)
         Euler3D.ComputeZYXOn()
@@ -436,7 +435,7 @@ def CoronalSliceUpdate(scene):
     TransformMatrix = DcmInfo["TransformMatrix"]
 
     ImagePath = os.path.join(SlicesDir, "CORONAL_SLICE.png")
-    Plane = bpy.context.scene.objects["CORONAL_SLICE"]
+    Plane = bpy.context.scene.objects.get("CORONAL_SLICE")
 
     if Plane and os.path.exists(ImageData):
 
@@ -514,7 +513,7 @@ def SagitalSliceUpdate(scene):
     TransformMatrix = DcmInfo["TransformMatrix"]
 
     ImagePath = os.path.join(SlicesDir, "SAGITAL_SLICE.png")
-    Plane = bpy.context.scene.objects["SAGITAL_SLICE"]
+    Plane = bpy.context.scene.objects.get("SAGITAL_SLICE")
 
     if Plane and os.path.exists(ImageData):
 
@@ -839,16 +838,16 @@ def ResizeImage(sitkImage, Ratio):
     Sp = image.GetSpacing()
     new_size = [int(Sz[0] * Ratio), int(Sz[1] * Ratio), int(Sz[2] * Ratio)]
     new_spacing = [Sp[0] / Ratio, Sp[1] / Ratio, Sp[2] / Ratio]
+
     ResizedImage = sitk.Resample(
-        image1=image,
-        size=new_size,
-        transform=sitk.Transform(),
-        interpolator=sitk.sitkLinear,
-        outputOrigin=image.GetOrigin(),
-        outputSpacing=new_spacing,
-        outputDirection=image.GetDirection(),
-        defaultPixelValue=0,
-        outputPixelType=image.GetPixelID(),
+        image,
+        new_size,
+        sitk.Transform(),
+        sitk.sitkLinear,
+        image.GetOrigin(),
+        new_spacing,
+        image.GetDirection(),
+        0,
     )
     return ResizedImage
 

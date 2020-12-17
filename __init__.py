@@ -79,7 +79,7 @@ if (
 ):
     # Addon modules imports :
     from . import BDENTAL_Props, BDENTAL_Panel
-    from .Operators import BDENTAL_ScanOperators
+    from .Operators import BDENTAL_ScanOperators, BDENTAL_Progress_Bar
 
     ############################################################################################
     # Registration :
@@ -88,6 +88,7 @@ if (
         BDENTAL_Props,
         BDENTAL_Panel,
         BDENTAL_ScanOperators,
+        BDENTAL_Progress_Bar,
     ]
     init_classes = []
 

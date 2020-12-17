@@ -30,7 +30,7 @@ addon_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ShadersBlendFile = os.path.join(
     addon_dir, "Resources\BlendData\BDENTAL_Shaders_collection.blend"
 )
-GpShader = "VGS_06"
+GpShader = "VGS_06"  # "VGS_marcos"  #
 Wmin = -400
 Wmax = 3000
 
@@ -606,6 +606,7 @@ class BDENTAL_OT_Volume_Render(bpy.types.Operator):
                 BlendFile = "SCAN.blend"
             Blendpath = os.path.join(BDENTAL_Props.UserProjectDir, BlendFile)
             bpy.ops.wm.save_as_mainfile(filepath=Blendpath)
+            bpy.ops.view3d.view_selected(use_all_regions=False)
 
             return {"FINISHED"}
 
@@ -704,15 +705,14 @@ class BDENTAL_OT_TreshSegment(bpy.types.Operator):
         Image3D = sitk.ReadImage(Nrrd255Path)
         Sz = Image3D.GetSize()
         OriginalSize = Sz[0] * Sz[1] * Sz[2]
-        if OriginalSize > 100000000:
-            SampleRatio = 100000000 / OriginalSize
-            ResizedImage = ResizeImage(sitkImage=Image3D, Ratio=SampleRatio)
-            Image3D = ResizedImage
-            print(f"Image DOWN Sampled : SampleRatio = {SampleRatio}")
+        # if OriginalSize > 100000000:
+        #     SampleRatio = 100000000 / OriginalSize
+        #     ResizedImage = ResizeImage(sitkImage=Image3D, Ratio=SampleRatio)
+        #     Image3D = ResizedImage
+        #     print(f"Image DOWN Sampled : SampleRatio = {SampleRatio}")
         print("CONVERTING IMAGE...")
         vtkImage = sitkTovtk(sitkImage=Image3D)
 
-        print("EXTRACTING Mesh...")
         Treshold255 = HuTo255(Hu=Treshold, Wmin=Wmin, Wmax=Wmax)
         if Treshold255 == 0:
             Treshold255 = 1
@@ -720,23 +720,54 @@ class BDENTAL_OT_TreshSegment(bpy.types.Operator):
             Treshold255 = 254
         ExtractedMesh = vtk_MC_Func(vtkImage=vtkImage, Treshold=Treshold255)
         polysCount = ExtractedMesh.GetNumberOfPolys()
-        print(f"ExtractedMesh polygons count : {polysCount} ...")
 
-        Reduction = 0.0
-        polysLimit = 250000
+        Mesh = ExtractedMesh
+
+        polysLimit = 800000
+        SampleRatio = 1
         if polysCount > polysLimit:
+            print(f"Hight polygons count, : ({polysCount}) Mesh will be reduced...")
+            SampleRatio = 0.5  # round(polysLimit / polysCount, 2) * 2
+            ResizedImage = ResizeImage(sitkImage=Image3D, Ratio=SampleRatio)
+            Image3D = ResizedImage
+            print(f"Image DOWN Sampled : SampleRatio = {SampleRatio}")
+
+            print("Re-CONVERTING Resampled IMAGE...")
+            vtkImage = sitkTovtk(sitkImage=Image3D)
+
+            Treshold255 = HuTo255(Hu=Treshold, Wmin=Wmin, Wmax=Wmax)
+            if Treshold255 == 0:
+                Treshold255 = 1
+            elif Treshold255 == 255:
+                Treshold255 = 254
+
+            ExtractedMesh = vtk_MC_Func(vtkImage=vtkImage, Treshold=Treshold255)
+            polysCount = ExtractedMesh.GetNumberOfPolys()
+            print(f"Resampled Mesh polygons count : ({polysCount}) ...")
             Reduction = round(1 - (polysLimit / polysCount), 2)
+            print(f"MESH REDUCTION: Ratio = ({Reduction}) ...")
+            ReductedMesh = vtkMeshReduction(mesh=ExtractedMesh, reduction=Reduction)
+            print(
+                f"Reduced Mesh polygons count : {ReductedMesh.GetNumberOfPolys()} ..."
+            )
+            Mesh = ReductedMesh
+        # Reduction = 0.0
+        # if polysCount > polysLimit:
+        #     Reduction = round(1 - (polysLimit / polysCount), 2)
 
-        print(f"MESH REDUCTION: Ratio = {Reduction}...")
-        ReductedMesh = vtkMeshReduction(mesh=ExtractedMesh, reduction=Reduction)
-        print(f"ReductedMesh polygons count : {ReductedMesh.GetNumberOfPolys()} ...")
+        # print(f"MESH REDUCTION: Ratio = ({Reduction}) ...")
+        # ReductedMesh = vtkMeshReduction(mesh=ExtractedMesh, reduction=Reduction)
+        # print(f"ReductedMesh polygons count : {ReductedMesh.GetNumberOfPolys()} ...")
 
-        # print("SMOOTHING...")
-        # SmoothedMesh = vtkSmoothMesh(mesh=ReductedMesh, Iterations=SmthIter)
-        # print(f"SmoothedMesh polygons count : {SmoothedMesh.GetNumberOfPolys()} ...")
+        else:
+            print(f"Optimal polygons count, ({polysCount}) .")
+
+        print("SMOOTHING...")
+        SmoothedMesh = vtkSmoothMesh(mesh=Mesh, Iterations=SmthIter)
+        print(f"SmoothedMesh polygons count : {SmoothedMesh.GetNumberOfPolys()} ...")
 
         print("SET MESH ORIENTATION...")
-        TransformedMesh = vtkTransformMesh(mesh=ReductedMesh, Matrix=VtkMatrix)
+        TransformedMesh = vtkTransformMesh(mesh=SmoothedMesh, Matrix=VtkMatrix)
 
         print("WRITING...")
         writer = vtk.vtkSTLWriter()
@@ -761,7 +792,7 @@ class BDENTAL_OT_TreshSegment(bpy.types.Operator):
         MoveToCollection(obj=obj, CollName="SEGMENTS")
 
         bpy.ops.object.modifier_add(type="CORRECTIVE_SMOOTH")
-        bpy.context.object.modifiers["CorrectiveSmooth"].iterations = 3
+        bpy.context.object.modifiers["CorrectiveSmooth"].iterations = 1
         bpy.context.object.modifiers["CorrectiveSmooth"].use_only_smooth = True
 
         finish = time.perf_counter()
