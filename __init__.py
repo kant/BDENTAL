@@ -29,7 +29,7 @@ bl_info = {
     "location": "3D View -> UI SIDE PANEL ",
     "description": "3D Tools suite for Digital Dentistry",  ########### Addon description
     "warning": "",
-    "wiki_url": "",
+    "doc_url": "",
     "tracker_url": "",
     "category": "Dental",  ################## Addon category
 }
@@ -37,8 +37,12 @@ bl_info = {
 # IMPORTS :
 #############################################################################################
 # Python imports :
-import sys, os, bpy, subprocess, socket, time, addon_utils
+import sys, os, bpy, subprocess, socket, time, addon_utils, platform
 
+# activate unicode characters in windows CLI :
+if platform.system() == "Windows":
+    cmd = "chcp 65001"  # "& set PYTHONIOENCODING=utf-8"
+    subprocess.call(cmd, shell=True)
 
 #############################################################
 # Add sys Paths : Addon directory and requirements directory
@@ -79,7 +83,7 @@ if (
 ):
     # Addon modules imports :
     from . import BDENTAL_Props, BDENTAL_Panel
-    from .Operators import BDENTAL_ScanOperators, BDENTAL_Progress_Bar
+    from .Operators import BDENTAL_ScanOperators
 
     ############################################################################################
     # Registration :
@@ -88,18 +92,10 @@ if (
         BDENTAL_Props,
         BDENTAL_Panel,
         BDENTAL_ScanOperators,
-        BDENTAL_Progress_Bar,
     ]
     init_classes = []
 
     def register():
-        # activate io_import_images_as_planes built_in addon :
-        addon_utils.enable(
-            "io_import_images_as_planes",
-            default_set=True,
-            persistent=True,
-            handle_error=None,
-        )
 
         for module in addon_modules:
             module.register()
@@ -164,21 +160,10 @@ else:
             ]
             init_classes = []
 
-            # activate io_import_images_as_planes built_in addon :
-            addon_utils.enable(
-                "io_import_images_as_planes",
-                default_set=True,
-                persistent=True,
-                handle_error=None,
-            )
-
             for module in addon_modules:
                 module.register()
             for cl in init_classes:
                 bpy.utils.register_class(cl)
-
-            message = "BDENTAL SCAN VIEWER enabled successfully ) "
-            ShowMessageBox(message=message, icon="COLORSET_03_VEC")
 
         def unregister():
             for cl in init_classes:
@@ -194,7 +179,7 @@ else:
         def register():
 
             message = "Please Check Internet Connexion and restart Blender! "
-            ShowMessageBox(message=message, icon="COLORSET_02_VEC")
+            print(message)
 
         def unregister():
             pass

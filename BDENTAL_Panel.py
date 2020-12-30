@@ -64,7 +64,7 @@ class BDENTAL_PT_SCAN_VIEWER(bpy.types.Panel):
                             )
 
                             row = layout.row()
-                            row.label(text=f"TRESHOLD {Wmin}/{Wmax} :")
+                            row.label(text=f"Threshold {Wmin} to {Wmax} HU:")
                             row = layout.row()
                             row.prop(
                                 BDENTAL_Props, "Treshold", text="TRESHOLD", slider=True

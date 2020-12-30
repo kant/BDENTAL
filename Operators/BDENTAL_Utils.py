@@ -1,13 +1,16 @@
 # # Python imports :
 
-import time, os, sys, shutil, math, threading
+import time, os, sys, shutil, math, threading, platform, subprocess
 from math import degrees, radians, pi
 import numpy as np
+from time import sleep, perf_counter as counter
+from queue import Queue
 
 import SimpleITK as sitk
 import cv2
 import vtk
 from vtk.util import numpy_support
+from vtk import vtkCommand
 
 # Blender Imports :
 import bpy
@@ -16,6 +19,7 @@ from mathutils import Matrix, Vector, Euler, kdtree
 
 # Global Variables :
 addon_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ProgEvent = vtkCommand.ProgressEvent
 
 #######################################################################################
 # Popup message box function :
@@ -55,6 +59,24 @@ def CopyDcmSerieToProjDir(DcmSerie, DicomSeqDir):
 ##########################################################################################
 ######################### BDENTAL Volume Render : ########################################
 ##########################################################################################
+
+
+def PlaneCut(Target, Plane, inner=False, outer=False, fill=False):
+
+    bpy.ops.object.select_all(action="DESELECT")
+    Target.select_set(True)
+    bpy.context.view_layer.objects.active = Target
+
+    Pco = Plane.matrix_world.translation
+    Pno = Plane.matrix_world.to_3x3().transposed()[2]
+
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.ops.mesh.select_all(action="SELECT")
+    bpy.ops.mesh.bisect(
+        plane_co=Pco, plane_no=Pno, use_fill=fill, clear_inner=inner, clear_outer=outer
+    )
+    bpy.ops.mesh.select_all(action="DESELECT")
+    bpy.ops.object.mode_set(mode="OBJECT")
 
 
 def AddBooleanCube(DimX, DimY, DimZ):
@@ -309,8 +331,13 @@ def Scene_Settings():
 
                 space.shading.type = "SOLID"
                 space.shading.color_type = "TEXTURE"
-                space.shading.light = "MATCAP"
-                space.shading.studio_light = "basic_side.exr"
+                # space.shading.light = "MATCAP"
+                # space.shading.studio_light = "basic_side.exr"
+                bpy.context.space_data.shading.light = "STUDIO"
+                bpy.context.space_data.shading.studio_light = "outdoor.sl"
+                bpy.context.space_data.shading.show_cavity = True
+                bpy.context.space_data.shading.curvature_ridge_factor = 0.5
+                bpy.context.space_data.shading.curvature_valley_factor = 0.5
 
     scn = bpy.context.scene
     scn.render.engine = "BLENDER_EEVEE"
@@ -328,6 +355,7 @@ def Scene_Settings():
     scn.view_settings.look = "Medium Low Contrast"
     scn.view_settings.exposure = 0.0
     scn.view_settings.gamma = 1.0
+    scn.eevee.use_ssr = True
 
 
 def MoveToCollection(obj, CollName):
@@ -852,6 +880,90 @@ def ResizeImage(sitkImage, Ratio):
     return ResizedImage
 
 
+# def VTK_Terminal_progress(caller, event, q):
+#     ProgRatio = round(float(caller.GetProgress()), 2)
+#     q.put(
+#         ["loop", f"PROGRESS : {step} processing...", "", {start}, {finish}, ProgRatio]
+#     )
+
+
+def VTKprogress(caller, event):
+    pourcentage = int(caller.GetProgress() * 100)
+    calldata = str(int(caller.GetProgress() * 100)) + " %"
+    # print(calldata)
+    sys.stdout.write(f"\r {calldata}")
+    sys.stdout.flush()
+    progress_bar(pourcentage, Delay=1)
+
+
+def TerminalProgressBar(
+    q, counter_start, iter=100, maxfill=20, symb1="\u2588", symb2="\u2502", periode=10
+):
+
+    if platform.system() == "Windows":
+        cmd = "chcp 65001 & set PYTHONIOENCODING=utf-8"
+        subprocess.call(cmd, shell=True)
+
+    print("\n")
+
+    while True:
+        if not q.empty():
+            signal = q.get()
+
+            if "End" in signal[0]:
+                finish = counter()
+                line = f"{symb1*maxfill}  100% Finished.------Total Time : {round(finish-counter_start,2)}"
+                # clear sys.stdout line and return to line start:
+                # sys.stdout.write("\r")
+                # sys.stdout.write(" " * 100)
+                # sys.stdout.flush()
+                # sys.stdout.write("\r")
+                # write line :
+                sys.stdout.write("\r" + " " * 80 + "\r" + line)  # f"{Char}"*i*2
+                sys.stdout.flush()
+                break
+
+            if "GuessTime" in signal[0]:
+                _, Uptxt, Lowtxt, start, finish, periode = signal
+                for i in range(iter):
+
+                    if q.empty():
+
+                        ratio = start + (((i + 1) / iter) * (finish - start))
+                        pourcentage = int(ratio * 100)
+                        symb1_fill = int(ratio * maxfill)
+                        symb2_fill = int(maxfill - symb1_fill)
+                        line = f"{symb1*symb1_fill}{symb2*symb2_fill}  {pourcentage}% {Uptxt}"
+                        # clear sys.stdout line and return to line start:
+                        # sys.stdout.write("\r"+" " * 80)
+                        # sys.stdout.flush()
+                        # write line :
+                        sys.stdout.write("\r" + " " * 80 + "\r" + line)  # f"{Char}"*i*2
+                        sys.stdout.flush()
+                        sleep(periode / iter)
+                    else:
+                        break
+
+            if "loop" in signal[0]:
+                _, Uptxt, Lowtxt, start, finish, progFloat = signal
+                ratio = start + (progFloat * (finish - start))
+                pourcentage = int(ratio * 100)
+                symb1_fill = int(ratio * maxfill)
+                symb2_fill = int(maxfill - symb1_fill)
+                line = f"{symb1*symb1_fill}{symb2*symb2_fill}  {pourcentage}% {Uptxt}"
+                # clear sys.stdout line and return to line start:
+                # sys.stdout.write("\r")
+                # sys.stdout.write(" " * 100)
+                # sys.stdout.flush()
+                # sys.stdout.write("\r")
+                # write line :
+                sys.stdout.write("\r" + " " * 80 + "\r" + line)  # f"{Char}"*i*2
+                sys.stdout.flush()
+
+        else:
+            time.sleep(0.1)
+
+
 def sitkTovtk(sitkImage):
     """Convert sitk image to a VTK image"""
     sitkArray = sitk.GetArrayFromImage(sitkImage)  # .astype(np.uint8)
@@ -887,21 +999,55 @@ def vtk_MC_Func(vtkImage, Treshold):
     return mesh
 
 
-def vtkMeshReduction(mesh, reduction):
+def vtkMeshReduction(q, mesh, reduction, step, start, finish):
+    """Reduce a mesh using VTK's vtkQuadricDecimation filter."""
+
+    def VTK_Terminal_progress(caller, event):
+        ProgRatio = round(float(caller.GetProgress()), 2)
+        q.put(
+            [
+                "loop",
+                f"PROGRESS : {step}...",
+                "",
+                start,
+                finish,
+                ProgRatio,
+            ]
+        )
+
     decimatFilter = vtk.vtkQuadricDecimation()
     decimatFilter.SetInputData(mesh)
     decimatFilter.SetTargetReduction(reduction)
+
+    decimatFilter.AddObserver(ProgEvent, VTK_Terminal_progress)
     decimatFilter.Update()
+
     mesh.DeepCopy(decimatFilter.GetOutput())
     return mesh
 
 
-def vtkSmoothMesh(mesh, Iterations):
+def vtkSmoothMesh(q, mesh, Iterations, step, start, finish):
+    """Smooth a mesh using VTK's vtkSmoothPolyData filter."""
+
+    def VTK_Terminal_progress(caller, event):
+        ProgRatio = round(float(caller.GetProgress()), 2)
+        q.put(
+            [
+                "loop",
+                f"PROGRESS : {step}...",
+                "",
+                start,
+                finish,
+                ProgRatio,
+            ]
+        )
+
     SmoothFilter = vtk.vtkSmoothPolyDataFilter()
     SmoothFilter.SetInputData(mesh)
     SmoothFilter.SetNumberOfIterations(int(Iterations))
     SmoothFilter.SetFeatureAngle(45)
     SmoothFilter.SetRelaxationFactor(0.05)
+    SmoothFilter.AddObserver(ProgEvent, VTK_Terminal_progress)
     SmoothFilter.Update()
     mesh.DeepCopy(SmoothFilter.GetOutput())
     return mesh
@@ -999,3 +1145,116 @@ def vtkContourFilter(vtkImage, isovalue=0.0):
     mesh = vtk.vtkPolyData()
     mesh.DeepCopy(ContourFilter.GetOutput())
     return mesh
+
+
+def CV2_progress_bar(q, iter=100):
+    while True:
+        if not q.empty():
+            signal = q.get()
+
+            if "End" in signal[0]:
+                pourcentage = 100
+                Uptxt = "Finished."
+                progress_bar(pourcentage, Uptxt)
+                break
+            if "GuessTime" in signal[0]:
+                _, Uptxt, Lowtxt, start, finish, periode = signal
+                for i in range(iter):
+
+                    if q.empty():
+
+                        ratio = start + (((i + 1) / iter) * (finish - start))
+                        pourcentage = int(ratio * 100)
+                        progress_bar(pourcentage, Uptxt)
+                        sleep(periode / iter)
+                    else:
+                        break
+
+            if "loop" in signal[0]:
+                _, Uptxt, Lowtxt, start, finish, progFloat = signal
+                ratio = start + (progFloat * (finish - start))
+                pourcentage = int(ratio * 100)
+                progress_bar(pourcentage, Uptxt)
+
+        else:
+            time.sleep(0.1)
+
+
+def progress_bar(pourcentage, Uptxt, Lowtxt="", Title="BDENATAL", Delay=1):
+
+    X, Y = WindowWidth, WindowHeight = (500, 100)
+    BackGround = np.ones((Y, X, 3), dtype=np.uint8) * 255
+    # Progress bar Parameters :
+    maxFill = X - 70
+    minFill = 40
+    barColor = (50, 200, 0)
+    BarHeight = 20
+    barUp = Y - 60
+    barBottom = barUp + BarHeight
+    # Text :
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    fontScale = 0.5
+    fontThikness = 1
+    fontColor = (0, 0, 0)
+    lineStyle = cv2.LINE_AA
+
+    chunk = (maxFill - 40) / 100
+
+    img = BackGround.copy()
+    fill = minFill + int(pourcentage * chunk)
+    img[barUp:barBottom, minFill:fill] = barColor
+
+    img = cv2.putText(
+        img,
+        f"{pourcentage}%",
+        (maxFill + 10, barBottom - 8),
+        # (fill + 10, barBottom - 10),
+        font,
+        fontScale,
+        fontColor,
+        fontThikness,
+        lineStyle,
+    )
+
+    img = cv2.putText(
+        img,
+        Uptxt,
+        (minFill, barUp - 10),
+        font,
+        fontScale,
+        fontColor,
+        fontThikness,
+        lineStyle,
+    )
+    cv2.imshow(Title, img)
+
+    cv2.waitKey(Delay)
+
+    if pourcentage == 100:
+        img = BackGround.copy()
+        img[barUp:barBottom, minFill:maxFill] = (50, 200, 0)
+        img = cv2.putText(
+            img,
+            "100%",
+            (maxFill + 10, barBottom - 8),
+            font,
+            fontScale,
+            fontColor,
+            fontThikness,
+            lineStyle,
+        )
+
+        img = cv2.putText(
+            img,
+            Uptxt,
+            (minFill, barUp - 10),
+            font,
+            fontScale,
+            fontColor,
+            fontThikness,
+            lineStyle,
+        )
+        cv2.imshow(Title, img)
+        cv2.waitKey(Delay)
+        time.sleep(4)
+        cv2.destroyAllWindows()
